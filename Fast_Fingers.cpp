@@ -5,6 +5,7 @@
 #include <cstdio>
 // #include <conio.h>
 #include <stdlib.h>
+#include <cctype> // for isascii()
 
 using namespace std;
 
@@ -20,7 +21,7 @@ struct student
 //--------------------------------------------------------------------------------------------------------------
 void show_menu()
 {
-    cout << "For <Start> Enter 1 , For <Statistics> Enter 2 , For <About> Enter 3 , For <Exit> Enter 4." << endl;
+    cout << "\nFor <Start> Enter 1 \nFor <Statistics> Enter 2 \nFor <About> Enter 3 \nFor <Exit> Enter 4" << endl;
 }
 //-------------------------------------------------------------------------------------------------------------
 void student_sort( student a[], int num )
@@ -46,6 +47,7 @@ void start()
 {
     string input; //word that you enter
     student my_student;
+    int error_freq[128] = {0}; // Tracks how often each ASCII character is mistyped
 	ofstream result("result.txt", ios::app);
     
     cout << "Enter your name" << endl;
@@ -81,6 +83,20 @@ void start()
                 {
                     cout << "\a" << "remaining time : " << remaining_time << endl;
                     my_student.incorrect_words ++;
+                    // Count mistyped characters
+                    // Compare each character in the incorrect word
+                    int minLen = min(input.length(), word.length());
+                    for (int i = 0; i < minLen; i++) {
+                        if (input[i] != word[i] && isascii(word[i])) {
+                            error_freq[(int)word[i]]++;
+                        }
+                    }
+                    // If word is longer than input, count remaining letters as missed
+                    for (int i = minLen; i < word.length(); i++) {
+                        if (isascii(word[i])) {
+                            error_freq[(int)word[i]]++;
+                        }
+                    }
                 }
                 my_student.all_words ++;
                 if((60 -(time(0) - begin)) < 0)
@@ -98,6 +114,44 @@ void start()
             }
         }
     }
+
+    // 🔒 Guard against empty or uninitialized memory usage
+    bool anyMistakeLogged = false;
+    for (int i = 0; i < 128; i++) {
+        if (error_freq[i] > 0) {
+            anyMistakeLogged = true;
+            break;
+        }
+    }
+    if (!anyMistakeLogged) {
+    cout << "Great job! You didn't mistype any specific letters.\n";
+    } else {
+        cout << "Your most mistyped letters:\n";
+
+        int top3[3] = {-1, -1, -1};
+        int top3Count[3] = {0, 0, 0};
+
+        for (int i = 32; i < 127; i++) {
+            for (int j = 0; j < 3; j++) {
+                if (error_freq[i] > top3Count[j]) {
+                    for (int k = 2; k > j; k--) {
+                        top3Count[k] = top3Count[k - 1];
+                        top3[k] = top3[k - 1];
+                    }
+                    top3Count[j] = error_freq[i];
+                    top3[j] = i;
+                    break;
+                }
+            }
+        }
+
+        for (int i = 0; i < 3; i++) {
+            if (top3[i] != -1 && top3Count[i] > 0) {
+                cout << "- '" << (char)top3[i] << "' was mistyped " << top3Count[i] << " times\n";
+            }
+        }
+    }
+
     if (! result) {
         cout << "file doesnt exist."<<endl;
         exit(1);
@@ -177,6 +231,14 @@ int main()
                 
                 break;
             }
+
+            case 4:
+            {
+                cout << "Goodbye!" << endl;
+                break;
+            }
+            default:
+            cout << "Invalid input. Try again." << endl;
         }
     }
     while(choice != 4);
