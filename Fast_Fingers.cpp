@@ -3,7 +3,6 @@
 #include <cstring>
 #include <fstream>
 #include <cstdio>
-// #include <conio.h>
 #include <stdlib.h>
 #include <cctype> // for isascii()
 #include <vector>
@@ -13,31 +12,66 @@ using namespace std;
 
 const int GAME_DURATION = 20;
 
-struct student
-{
+struct student {
     string name ;
     int all_words;
     double correct_words;
     double incorrect_words;
     double speed;
-    time_t start_time;
+    time_t start_game_time;
 };
-//--------------------------------------------------------------------------------------------------------------
-void show_menu()
-{
+
+//-------------------------------------------- Function declarations --------------------------------------------
+
+// display menu
+void show_menu();
+
+// sort leaderboard
+void sort_students_by_speed(student a[], int num);
+
+// lowercase converter
+string to_lowercase(string s);
+
+// log errors
+void update_char_mistake_count(const string& input, const string& word, int char_mistake_count[128]);
+
+// fetch random word
+bool get_random_word(string& chosen_word, bool hard_mode);
+
+// main game
+void run_main_game(student& current_player, int char_mistake_count[128], bool hard_mode);
+
+// focused practice
+void targeted_practice_round(const vector<char>& targeted_chars, student& current_player, int char_mistake_count[128]);
+
+// analyze mistakes
+void evaluate_errors_and_practice(student& current_player, int char_mistake_count[128]);
+
+// show results
+void show_results(const student& current_player);
+
+// choose difficulty
+bool choose_difficulty();
+
+// compare accuracy before and after second round
+void check_improvement(int correct_before, int incorrect_before, int correct_after, int incorrect_after);
+
+// start_game game
+void start_game();
+
+//-------------------------------------------- Display menu --------------------------------------------
+
+void show_menu() {
     cout << "\nFor <Start> Enter 1 \nFor <Statistics> Enter 2 \nFor <About> Enter 3 \nFor <Exit> Enter 4" << endl;
 }
-//-------------------------------------------------------------------------------------------------------------
-void student_sort( student a[], int num )
-{
-    //int num = 0;
+
+//-------------------------------------------- Sort Leaderboard --------------------------------------------
+
+void sort_students_by_speed( student a[], int num ) {
 	student temp ;
-    for(int i = 0 ; i < num ; i++)
-    {
-        for(int j = 0; j < num - i -1; j++)
-        {
-            if(a[j].speed < a[j + 1].speed)
-            {
+    for(int i = 0 ; i < num ; i++) {
+        for(int j = 0; j < num - i -1; j++) {
+            if(a[j].speed < a[j + 1].speed) {
                 temp = a[j] ;
                 a[j] = a[j + 1];
                 a[j + 1] = temp;
@@ -46,178 +80,246 @@ void student_sort( student a[], int num )
     }
 }
 
-//--------------------------------------------------------------------------------------------------------------
-void targeted_practice_round(const vector<char>& targeted_chars, student& my_student, int error_freq[128]);
+//-------------------------------------------- Lowercase converter --------------------------------------------
 
-
-//---------------------------------------------------------------------------------------------------------------
 string to_lowercase(string s) {
     transform(s.begin(), s.end(), s.begin(), ::tolower);
     return s;
 }
 
-//---------------------------------------------------------------------------------------------------------------
-void start()
-{
-    string input; //word that you enter
-    student my_student;
-    int error_freq[128] = {0}; // Tracks how often each ASCII character is mistyped
-	ofstream result("result.txt", ios::app);
-    
-    cout << "Enter your name" << endl;
-    cin >> my_student.name;
+//-------------------------------------------- Log errors --------------------------------------------
 
-    my_student.correct_words = 0;
-    my_student.incorrect_words = 0;
-    my_student.all_words = 0;
-    my_student.start_time = time(0);
-    srand(time(0));
-    
-    time_t begin = time(0);
-    while ((time(0) - begin) < GAME_DURATION)
-    {
-        string word;
-        int random = 0;
-        int numOfLines = 0;
-        ifstream wordsFile("dataset.txt", ios::in);
-        if (!wordsFile) {
-            cerr << "Error opening dataset.txt\n";
-            return;
+void update_char_mistake_count(const string& input, const string& word, int char_mistake_count[128]) {
+    int minLen = min(input.length(), word.length());
+
+    for (int i = 0; i < minLen; i++) {
+        if (tolower(input[i]) != tolower(word[i]) && isascii(word[i])) {
+            char lower = tolower(word[i]);
+            char_mistake_count[(int)lower]++;
         }
-        random = rand() % 5000;
-        while(getline(wordsFile, word))
-        {
-            ++numOfLines;
-            if(numOfLines == random)
-            {
-                cout << word << endl; //shows the random words in dataset file
-                
-                cin >> input;
+    }
+    for (int i = minLen; i < word.length(); i++) {
+        if (isascii(word[i])) {
+            char lower = tolower(word[i]);
+            char_mistake_count[(int)lower]++;
+        }
+    }
+}
 
-                int remaining_time = (GAME_DURATION - (time(0) - begin));
+//-------------------------------------------- Fetch random word --------------------------------------------
 
-                string lower_input = to_lowercase(input);
-                string lower_word = to_lowercase(word);
+bool get_random_word(string& chosen_word, bool hard_mode) {
+    ifstream wordsFile("dataset.txt", ios::in);
+    if (!wordsFile) {
+        cerr << "Error opening dataset.txt\n";
+        return false;
+    }
 
-                if (lower_input == lower_word)
-                {
-                    cout << "remaining time : " << remaining_time << endl;
-                    my_student.correct_words ++;
-                }
-                else
-                {
-                    cout << "\a" << "remaining time : " << remaining_time << endl;
-                    my_student.incorrect_words ++;
-                    // Count mistyped characters
-                    // Compare each character in the incorrect word
-                    int minLen = min(input.length(), word.length());
+    vector<string> word_list;
+    string line;
+    while (getline(wordsFile, line)) {
+        if (!hard_mode || line.length() > 6) {
+            word_list.push_back(line);
+        }
+    }
+    wordsFile.close();
 
-                    for (int i = 0; i < minLen; i++) {
-                        if (tolower(input[i]) != tolower(word[i]) && isascii(word[i])) {
-                            char lower = tolower(word[i]);
-                            error_freq[(int)lower]++;
-                        }
-                    }
-                    // If word is longer than input, count remaining letters as missed
-                    for (int i = minLen; i < word.length(); i++) {
-                        if (isascii(word[i])) {
-                            char lower = tolower(word[i]);
-                            error_freq[(int)lower]++;
-                        }
-                    }
-                }
-                my_student.all_words ++;
-                if((60 -(time(0) - begin)) < 0)
-                {
-                    cout << "The last word was failed" << endl;
-                    
-                    my_student.all_words --;
-                    
-                    if (lower_input == lower_word)
-                        my_student.correct_words --;
-                    
-                    else
-                        my_student.incorrect_words --;
-                }
-            }
+    if (word_list.empty()) return false;
+
+    int random = rand() % word_list.size();
+    chosen_word = word_list[random];
+    return true;
+}
+
+//-------------------------------------------- Show results --------------------------------------------
+
+void show_results(const student& current_player) {
+    cout << "\n========= Your Typing Summary =========" << endl;
+    cout << "Name: " << current_player.name << endl;
+    cout << "Total Words Attempted: " << current_player.all_words << endl;
+    cout << "Correct Words: " << current_player.correct_words << endl;
+    cout << "Incorrect Words: " << current_player.incorrect_words << endl;
+    cout << "Typing Speed (words/min): " << current_player.speed << endl;
+    cout << "-----------------------------------------" << endl;
+}
+
+//-------------------------------------------- Choose difficulty --------------------------------------------
+
+bool choose_difficulty() {
+    int difficulty_choice;
+    cout << "Select Difficulty:\n1. Normal\n2. Difficult" << endl;
+    cin >> difficulty_choice;
+    return (difficulty_choice == 2);
+}
+
+//-------------------------------------------- Check Improvement --------------------------------------------
+
+void check_improvement(int correct_before, int incorrect_before, int correct_after, int incorrect_after) {
+    int total_before = correct_before + incorrect_before;
+    int total_after = correct_after + incorrect_after;
+
+    double accuracy_before = (total_before > 0) ? (double)correct_before / total_before : 0;
+    double accuracy_after = (total_after > 0) ? (double)correct_after / total_after : 0;
+
+    cout << "\n=========== Improvement Summary ===========\n";
+    cout << "Accuracy Before: " << accuracy_before * 100 << "%" << endl;
+    cout << "Accuracy After:  " << accuracy_after * 100 << "%" << endl;
+
+    if (accuracy_after > accuracy_before) {
+        cout << "Great job! Your accuracy improved after the focused practice round!\n";
+    } else if (accuracy_after < accuracy_before) {
+        cout << "Looks like your accuracy dropped slightly. Keep practicing!\n";
+    } else {
+        cout << "Your accuracy stayed the same. Still a solid effort!\n";
+    }
+    cout << "===========================================\n";
+}
+
+//-------------------------------------------- Main game --------------------------------------------
+
+void run_main_game(student& current_player, int char_mistake_count[128], bool hard_mode) {
+    time_t begin = time(0);
+    string input;
+
+    while ((time(0) - begin) < GAME_DURATION) {
+        string word;
+        if (!get_random_word(word, hard_mode))
+            return;
+
+        cout << word << endl;
+        cin >> input;
+
+        int remaining_time = GAME_DURATION - (time(0) - begin);
+
+        string lower_input = to_lowercase(input);
+        string lower_word = to_lowercase(word);
+
+        if (lower_input == lower_word) {
+            cout << "remaining time : " << remaining_time << endl;
+            current_player.correct_words++;
+        } else {
+            cout << "\a" << "remaining time : " << remaining_time << endl;
+            current_player.incorrect_words++;
+            update_char_mistake_count(input, word, char_mistake_count);
+        }
+
+        current_player.all_words++;
+
+        if ((GAME_DURATION - (time(0) - begin)) < 0) {
+            cout << "The last word was failed!" << endl;
+            current_player.all_words--;
+            if (lower_input == lower_word)
+                current_player.correct_words--;
+            else
+                current_player.incorrect_words--;
         }
     }
 
-    // Guard against empty or uninitialized memory usage
+    // show results after game ends
+    current_player.speed = current_player.correct_words / (GAME_DURATION / 60.0);
+    show_results(current_player);
+}
+
+//-------------------------------------------- Analyze mistakes --------------------------------------------
+
+void evaluate_errors_and_practice(student& current_player, int char_mistake_count[128]) {
     bool anyMistakeLogged = false;
     for (int i = 0; i < 128; i++) {
-        if (error_freq[i] > 0) {
+        if (char_mistake_count[i] > 0) {
             anyMistakeLogged = true;
             break;
         }
     }
+
     if (!anyMistakeLogged) {
-    cout << "Great job! You didn't mistype any specific letters.\n\n";
-    } else {
-        cout << "Your most mistyped letters:\n";
+        cout << "Great job! You didn't mistype any specific letters.\n\n";
+        return;
+    }
 
-        int top3[3] = {-1, -1, -1};
-        int top3Count[3] = {0, 0, 0};
+    cout << "Your most mistyped letters:\n";
+    int top3[3] = {-1, -1, -1};
+    int top3Count[3] = {0, 0, 0};
 
-        for (int i = 97; i <= 122; i++) {  // only lowercase a-z
-            for (int j = 0; j < 3; j++) {
-                if (error_freq[i] > top3Count[j]) {
-                    // Shift down lower values
-                    for (int k = 2; k > j; k--) {
-                        top3Count[k] = top3Count[k - 1];
-                        top3[k] = top3[k - 1];
-                    }
-                    top3Count[j] = error_freq[i];
-                    top3[j] = i;
-                    break;
+    for (int i = 97; i <= 122; i++) {
+        for (int j = 0; j < 3; j++) {
+            if (char_mistake_count[i] > top3Count[j]) {
+                for (int k = 2; k > j; k--) {
+                    top3Count[k] = top3Count[k - 1];
+                    top3[k] = top3[k - 1];
                 }
+                top3Count[j] = char_mistake_count[i];
+                top3[j] = i;
+                break;
             }
         }
+    }
 
-
-        for (int i = 0; i < 3; i++) {
-            if (top3[i] != -1 && top3Count[i] > 0) {
-                cout << "- '" << (char)top3[i] << "' was mistyped " << top3Count[i] << " times\n";
-            }
+    vector<char> targeted_chars;
+    for (int i = 0; i < 3; i++) {
+        if (top3[i] != -1 && top3Count[i] > 0) {
+            cout << "- '" << (char)top3[i] << "' was mistyped " << top3Count[i] << " times\n";
+            targeted_chars.push_back((char)top3[i]);
         }
+    }
 
-        vector<char> targeted_chars;
-        for (int i = 0; i < 3; i++) {
-            if (top3[i] != -1 && top3Count[i] > 0) {
-                targeted_chars.push_back((char)top3[i]);
-            }
-        }
+    cout << "=======================================\n";
 
-        if (!targeted_chars.empty()) {
+    if (!targeted_chars.empty()) {
         char response;
         cout << "\nWould you like to practice the letters you mistyped the most? (y/n): ";
         cin >> response;
 
         if (tolower(response) == 'y') {
-            targeted_practice_round(targeted_chars, my_student, error_freq);
-        } else {
-            cout << "\nGreat job " << my_student.name << "!" << endl;
+            int correct_before = current_player.correct_words;
+            int incorrect_before = current_player.incorrect_words;
+
+            targeted_practice_round(targeted_chars, current_player, char_mistake_count);
+
+            int correct_after = current_player.correct_words;
+            int incorrect_after = current_player.incorrect_words;
+
+            check_improvement(correct_before, incorrect_before, correct_after, incorrect_after);
         }
+    }
 }
 
+//-------------------------------------------- start_game game --------------------------------------------
 
-    }
+void start_game() {
+    student current_player;
+    int char_mistake_count[128] = {0};
+    ofstream result("result.txt", ios::app);
 
-    if (! result) {
-        cout << "file doesnt exist."<<endl;
+    cout << "Enter your name" << endl;
+    cin >> current_player.name;
+
+    current_player.correct_words = 0;
+    current_player.incorrect_words = 0;
+    current_player.all_words = 0;
+    current_player.start_game_time = time(0);
+    srand(time(0));
+
+    bool hard_mode = choose_difficulty();  // Ask user for difficulty
+    run_main_game(current_player, char_mistake_count, hard_mode); 
+    evaluate_errors_and_practice(current_player, char_mistake_count);
+
+    if (!result)
+    {
+        cout << "file doesn't exist." << endl;
         exit(1);
     }
-    my_student.speed = my_student.correct_words / 60;
-    result  << my_student.name << '\t'<< my_student.all_words << '\t';
-    result  << my_student.correct_words << '\t' << my_student.incorrect_words;
-    result  << '\t' << my_student.speed << '\t'  << endl;
+
+    current_player.speed = current_player.correct_words / 60;
+    result << current_player.name << '\t' << current_player.all_words << '\t';
+    result << current_player.correct_words << '\t' << current_player.incorrect_words;
+    result << '\t' << current_player.speed << '\t' << endl;
     result.close();
 }
 
 //--------------------------------------------------------------------------------------------------------------
 
-void targeted_practice_round(const vector<char>& targeted_chars, student& my_student, int error_freq[128]) {
-    cout << "\nStarting focused practice round for your most mistyped letters...\n";
+void targeted_practice_round(const vector<char>& targeted_chars, student& current_player, int char_mistake_count[128]) {
+    cout << "\nstart_gameing focused practice round for your most mistyped letters:\n";
 
     vector<string> word_bank;
     string word;
@@ -260,43 +362,46 @@ void targeted_practice_round(const vector<char>& targeted_chars, student& my_stu
         int remaining_time = (GAME_DURATION - (time(0) - second_begin));
         if (input == selected_word) {
             cout << "remaining time : " << remaining_time << endl;
-            my_student.correct_words++;
+            current_player.correct_words++;
         } else {
             cout << "\a" << "remaining time : " << remaining_time << endl;
-            my_student.incorrect_words++;
+            current_player.incorrect_words++;
 
             int minLen = min(input.length(), selected_word.length());
             for (int i = 0; i < minLen; i++) {
                 if (input[i] != selected_word[i] && isascii(selected_word[i])) {
                     char lower = tolower(selected_word[i]);
-                    error_freq[(int)lower]++;
+                    char_mistake_count[(int)lower]++;
                 }
             }
             for (int i = minLen; i < selected_word.length(); i++) {
                 if (isascii(selected_word[i])) {
                     char lower = tolower(selected_word[i]);
-                    error_freq[(int)lower]++;
+                    char_mistake_count[(int)lower]++;
                 }
             }
         }
-        my_student.all_words++;
+        current_player.all_words++;
     }
+    //Show results after focused practice
+    current_player.speed = current_player.correct_words / (GAME_DURATION / 60.0);
+    show_results(current_player);
 }
 
 //------------------------------------------------------------------------------------------------------------------
 void statistics()
 {
-    ifstream my_student("result.txt",ios::in);
+    ifstream current_player("result.txt",ios::in);
     student s[1000];
     int num;
     int i = 0;
-	while(my_student >> s[i].name >> s[i].all_words >> s[i].speed >> s[i].correct_words >> s[i].incorrect_words)
+	while(current_player >> s[i].name >> s[i].all_words >> s[i].speed >> s[i].correct_words >> s[i].incorrect_words)
     {
         i++;
     }
-	my_student.close();
+	current_player.close();
 	num = i;
-    student_sort (s, num) ;
+    sort_students_by_speed (s, num) ;
     
     ofstream write_to_file("result.txt");
     for( i = 0; i <= num; i++)
@@ -328,7 +433,7 @@ int main()
         {
             case 1:
             {
-                start();
+                start_game();
                 break;
             }
             
