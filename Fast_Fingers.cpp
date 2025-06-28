@@ -6,8 +6,12 @@
 // #include <conio.h>
 #include <stdlib.h>
 #include <cctype> // for isascii()
+#include <vector>
+
 
 using namespace std;
+
+const int GAME_DURATION = 20;
 
 struct student
 {
@@ -43,6 +47,16 @@ void student_sort( student a[], int num )
 }
 
 //--------------------------------------------------------------------------------------------------------------
+void targeted_practice_round(const vector<char>& targeted_chars, student& my_student, int error_freq[128]);
+
+
+//---------------------------------------------------------------------------------------------------------------
+string to_lowercase(string s) {
+    transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
+
+//---------------------------------------------------------------------------------------------------------------
 void start()
 {
     string input; //word that you enter
@@ -53,16 +67,23 @@ void start()
     cout << "Enter your name" << endl;
     cin >> my_student.name;
 
+    my_student.correct_words = 0;
+    my_student.incorrect_words = 0;
+    my_student.all_words = 0;
     my_student.start_time = time(0);
+    srand(time(0));
     
     time_t begin = time(0);
-    while ((time(0) - begin) < 20)
+    while ((time(0) - begin) < GAME_DURATION)
     {
         string word;
         int random = 0;
         int numOfLines = 0;
         ifstream wordsFile("dataset.txt", ios::in);
-        srand(time(0));
+        if (!wordsFile) {
+            cerr << "Error opening dataset.txt\n";
+            return;
+        }
         random = rand() % 5000;
         while(getline(wordsFile, word))
         {
@@ -73,8 +94,12 @@ void start()
                 
                 cin >> input;
 
-                int remaining_time = (20 - (time(0) - begin));
-                if(input == word)
+                int remaining_time = (GAME_DURATION - (time(0) - begin));
+
+                string lower_input = to_lowercase(input);
+                string lower_word = to_lowercase(word);
+
+                if (lower_input == lower_word)
                 {
                     cout << "remaining time : " << remaining_time << endl;
                     my_student.correct_words ++;
@@ -86,15 +111,18 @@ void start()
                     // Count mistyped characters
                     // Compare each character in the incorrect word
                     int minLen = min(input.length(), word.length());
+
                     for (int i = 0; i < minLen; i++) {
-                        if (input[i] != word[i] && isascii(word[i])) {
-                            error_freq[(int)word[i]]++;
+                        if (tolower(input[i]) != tolower(word[i]) && isascii(word[i])) {
+                            char lower = tolower(word[i]);
+                            error_freq[(int)lower]++;
                         }
                     }
                     // If word is longer than input, count remaining letters as missed
                     for (int i = minLen; i < word.length(); i++) {
                         if (isascii(word[i])) {
-                            error_freq[(int)word[i]]++;
+                            char lower = tolower(word[i]);
+                            error_freq[(int)lower]++;
                         }
                     }
                 }
@@ -105,7 +133,7 @@ void start()
                     
                     my_student.all_words --;
                     
-                    if(input == word)
+                    if (lower_input == lower_word)
                         my_student.correct_words --;
                     
                     else
@@ -115,7 +143,7 @@ void start()
         }
     }
 
-    // 🔒 Guard against empty or uninitialized memory usage
+    // Guard against empty or uninitialized memory usage
     bool anyMistakeLogged = false;
     for (int i = 0; i < 128; i++) {
         if (error_freq[i] > 0) {
@@ -124,16 +152,17 @@ void start()
         }
     }
     if (!anyMistakeLogged) {
-    cout << "Great job! You didn't mistype any specific letters.\n";
+    cout << "Great job! You didn't mistype any specific letters.\n\n";
     } else {
         cout << "Your most mistyped letters:\n";
 
         int top3[3] = {-1, -1, -1};
         int top3Count[3] = {0, 0, 0};
 
-        for (int i = 32; i < 127; i++) {
+        for (int i = 97; i <= 122; i++) {  // only lowercase a-z
             for (int j = 0; j < 3; j++) {
                 if (error_freq[i] > top3Count[j]) {
+                    // Shift down lower values
                     for (int k = 2; k > j; k--) {
                         top3Count[k] = top3Count[k - 1];
                         top3[k] = top3[k - 1];
@@ -145,11 +174,33 @@ void start()
             }
         }
 
+
         for (int i = 0; i < 3; i++) {
             if (top3[i] != -1 && top3Count[i] > 0) {
                 cout << "- '" << (char)top3[i] << "' was mistyped " << top3Count[i] << " times\n";
             }
         }
+
+        vector<char> targeted_chars;
+        for (int i = 0; i < 3; i++) {
+            if (top3[i] != -1 && top3Count[i] > 0) {
+                targeted_chars.push_back((char)top3[i]);
+            }
+        }
+
+        if (!targeted_chars.empty()) {
+        char response;
+        cout << "\nWould you like to practice the letters you mistyped the most? (y/n): ";
+        cin >> response;
+
+        if (tolower(response) == 'y') {
+            targeted_practice_round(targeted_chars, my_student, error_freq);
+        } else {
+            cout << "\nGreat job " << my_student.name << "!" << endl;
+        }
+}
+
+
     }
 
     if (! result) {
@@ -162,6 +213,76 @@ void start()
     result  << '\t' << my_student.speed << '\t'  << endl;
     result.close();
 }
+
+//--------------------------------------------------------------------------------------------------------------
+
+void targeted_practice_round(const vector<char>& targeted_chars, student& my_student, int error_freq[128]) {
+    cout << "\nStarting focused practice round for your most mistyped letters...\n";
+
+    vector<string> word_bank;
+    string word;
+    
+    ifstream wordsFile("dataset.txt");
+    if (!wordsFile) {
+        cerr << "Error opening dataset.txt\n";
+        return;
+    }
+    
+    while (getline(wordsFile, word)) {
+        word_bank.push_back(word);
+    }
+    wordsFile.close();
+
+    time_t second_begin = time(0);
+    string input;
+
+    while ((time(0) - second_begin) < GAME_DURATION) {
+        string selected_word;
+        bool found = false;
+
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            int idx = rand() % word_bank.size();
+            selected_word = word_bank[idx];
+            for (char c : targeted_chars) {
+                if (selected_word.find(c) != string::npos) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+
+        if (!found) break;
+
+        cout << selected_word << endl;
+        cin >> input;
+
+        int remaining_time = (GAME_DURATION - (time(0) - second_begin));
+        if (input == selected_word) {
+            cout << "remaining time : " << remaining_time << endl;
+            my_student.correct_words++;
+        } else {
+            cout << "\a" << "remaining time : " << remaining_time << endl;
+            my_student.incorrect_words++;
+
+            int minLen = min(input.length(), selected_word.length());
+            for (int i = 0; i < minLen; i++) {
+                if (input[i] != selected_word[i] && isascii(selected_word[i])) {
+                    char lower = tolower(selected_word[i]);
+                    error_freq[(int)lower]++;
+                }
+            }
+            for (int i = minLen; i < selected_word.length(); i++) {
+                if (isascii(selected_word[i])) {
+                    char lower = tolower(selected_word[i]);
+                    error_freq[(int)lower]++;
+                }
+            }
+        }
+        my_student.all_words++;
+    }
+}
+
 //------------------------------------------------------------------------------------------------------------------
 void statistics()
 {
